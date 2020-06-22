@@ -45,6 +45,6 @@ playback --file log.json --shift 1d
 4. Push to the branch (git push origin my-new-feature)
 5. Create new Pull Request
 
-## Licence
+## License
 
-[MIT](LICENCE)
+[MIT](LICENSE)
