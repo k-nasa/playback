@@ -1,3 +1,4 @@
+use anyhow::{anyhow, bail};
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use clap::{App, AppSettings, Arg};
 use reqwest::{Method, Url};
@@ -38,38 +39,54 @@ async fn main() -> PlaybackResult<()> {
     let shift = matches.value_of("shift").unwrap_or("0s");
     let shift_time = parse_time(shift)?;
 
-    // TODO 新しいstructを作る
-    // struct Hoge {
-    //  request_time: time::Instant,
-    //  request: Request
-    // }
-    // 的なやつ
-    let shifted_logs = logs
+    let schedules = logs
         .iter()
-        .map(|log| Log {
-            accessed_at: log.accessed_at + Duration::from_std(shift_time).unwrap(),
-            url: log.url.clone(),
-            http_method: log.http_method.clone(),
-            http_header: log.http_header.clone(),
-            http_body: log.http_body.clone(),
+        .map(|log| {
+            let at = log.accessed_at + Duration::from_std(shift_time).unwrap();
+
+            let mut request = reqwest::Request::new(log.http_method.clone(), log.url.clone());
+            *request.body_mut() = Some(log.http_body.clone().into());
+            *request.headers_mut() = (&log.http_header).try_into().unwrap();
+
+            Schedule { at, request }
         })
         .collect();
 
-    send_requests(shifted_logs).await?;
+    send_requests(schedules).await?;
 
     Ok(())
 }
 
-async fn send_requests(logs: Logs) -> PlaybackResult<()> {
-    println!("start {:?}", logs);
+type Schedules = Vec<Schedule>;
 
+struct Schedule {
+    at: chrono::DateTime<Utc>,
+    request: reqwest::Request,
+}
+impl Schedule {
+    async fn schedule(self) -> PlaybackResult<()> {
+        let duration = (self.at - chrono::Utc::now()).to_std()?;
+
+        // TODO debug log
+        println!("schedule for {:?}", duration);
+
+        delay_for(duration).await;
+
+        let response = reqwest::Client::new().execute(self.request).await;
+        println!("{:?}", response);
+
+        Ok(())
+    }
+}
+
+async fn send_requests(schedules: Schedules) -> PlaybackResult<()> {
     // TODO Add async task budget
     // const MAX_REQUEST: usize = 10_000;
 
     let mut tasks = vec![];
-    for log in logs {
+    for schedule in schedules {
         let task = task::spawn(async move {
-            schedule_request(log).await.unwrap();
+            schedule.schedule().await.unwrap();
         });
         tasks.push(task);
     }
@@ -77,24 +94,6 @@ async fn send_requests(logs: Logs) -> PlaybackResult<()> {
     for task in tasks {
         task.await.unwrap();
     }
-
-    Ok(())
-}
-
-async fn schedule_request(log: Log) -> PlaybackResult<()> {
-    let duration = (log.accessed_at - chrono::Utc::now()).to_std()?;
-
-    // TODO debug log
-    println!("schedule for {:?}", duration);
-
-    delay_for(duration).await;
-
-    let mut request = reqwest::Request::new(log.http_method, log.url);
-    *request.body_mut() = Some(log.http_body.into());
-    *request.headers_mut() = (&log.http_header).try_into().unwrap();
-
-    let response = reqwest::Client::new().execute(request).await;
-    println!("{:?}", response);
 
     Ok(())
 }
@@ -220,7 +219,6 @@ enum TimeType {
 impl std::str::FromStr for TimeType {
     type Err = anyhow::Error;
 
-    // TODO add error handle
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let tail = match s.chars().last() {
             None => bail!("invalid shift time"),
