@@ -130,9 +130,6 @@ fn build_app() -> App<'static, 'static> {
     App::new(env!("CARGO_PKG_NAME"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .version(env!("CARGO_PKG_VERSION"))
-        .args(&[Arg::with_name("access_log")
-            .help("log string")
-            .required(false)])
         .arg(
             Arg::with_name("file")
                 .help("Specifies access log filepath")
