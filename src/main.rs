@@ -1,4 +1,6 @@
-use anyhow::bail;
+#![feature(async_closure)]
+
+use anyhow::{bail, Result};
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use clap::{App, AppSettings, Arg};
 use reqwest::{Method, Url};
@@ -10,11 +12,8 @@ use std::time;
 use tokio::task;
 use tokio::time::delay_for;
 
-type PlaybackResult<T> = std::result::Result<T, PlaybackError>;
-type PlaybackError = Box<dyn std::error::Error>;
-
 #[tokio::main]
-async fn main() -> PlaybackResult<()> {
+async fn main() -> Result<()> {
     let app = build_app();
 
     let matches = app.get_matches();
@@ -22,8 +21,7 @@ async fn main() -> PlaybackResult<()> {
     let access_log = matches.value_of("access_log");
 
     if filepath.is_none() & access_log.is_none() {
-        println!("\x1b[01;31mError:\x1b[m please specify log filepath or access log text");
-        std::process::exit(1)
+        bail!("please specify log filepath or access log text")
     }
 
     let logs = if let Some(path) = filepath {
@@ -31,10 +29,8 @@ async fn main() -> PlaybackResult<()> {
     } else if let Some(text) = access_log {
         resolve_log_text(text)
     } else {
-        println!("\x1b[01;31mError:\x1b[m please specify log filepath or access log text");
-        std::process::exit(1)
-    }
-    .unwrap();
+        unreachable!()
+    }?;
 
     let shift = matches.value_of("shift").unwrap_or("0s");
     let shift_time = parse_time(shift)?;
@@ -64,8 +60,14 @@ struct Schedule {
     request: reqwest::Request,
 }
 impl Schedule {
-    async fn schedule(self) -> PlaybackResult<()> {
-        let duration = (self.at - chrono::Utc::now()).to_std()?;
+    async fn schedule(self) -> Result<()> {
+        let duration = match (self.at - chrono::Utc::now()).to_std() {
+            Ok(d) => d,
+            Err(_) => bail!(
+                "Cannot send a request in the past: Specified datetime is {}",
+                self.at
+            ),
+        };
 
         // TODO debug log
         println!("schedule for {:?}", duration);
@@ -79,20 +81,18 @@ impl Schedule {
     }
 }
 
-async fn send_requests(schedules: Schedules) -> PlaybackResult<()> {
+async fn send_requests(schedules: Schedules) -> Result<()> {
     // TODO Add async task budget
     // const MAX_REQUEST: usize = 10_000;
 
     let mut tasks = vec![];
     for schedule in schedules {
-        let task = task::spawn(async move {
-            schedule.schedule().await.unwrap();
-        });
+        let task = task::spawn(async { schedule.schedule().await });
         tasks.push(task);
     }
 
     for task in tasks {
-        task.await.unwrap();
+        task.await??;
     }
 
     Ok(())
@@ -181,13 +181,13 @@ impl TryFrom<JsonLog> for Log {
     }
 }
 
-fn resolve_log_file(log_file_path: &str) -> PlaybackResult<Logs> {
+fn resolve_log_file(log_file_path: &str) -> Result<Logs> {
     let log_text = std::fs::read_to_string(log_file_path)?;
 
     resolve_log_text(&log_text)
 }
 
-fn resolve_log_text(log_text: &str) -> PlaybackResult<Logs> {
+fn resolve_log_text(log_text: &str) -> Result<Logs> {
     let json_logs: JsonLogs = serde_json::from_str(log_text)?;
 
     let mut logs = vec![];
@@ -265,7 +265,7 @@ fn test_time_type_from_str() {
     assert!(TimeType::from_str("2t").is_err());
 }
 
-fn parse_time(s: &str) -> PlaybackResult<time::Duration> {
+fn parse_time(s: &str) -> Result<time::Duration> {
     let time_type = TimeType::from_str(s)?;
 
     Ok(match time_type {
