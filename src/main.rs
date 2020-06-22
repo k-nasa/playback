@@ -205,13 +205,14 @@ impl std::str::FromStr for TimeType {
     // TODO add error handle
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let tail = s.chars().last().unwrap();
+        let number = s[0..(s.len() - 1)].parse()?;
 
         let time_type = match tail {
-            's' => TimeType::S(s[0..(s.len() - 1)].parse().unwrap()),
-            'm' => TimeType::M(s[0..(s.len() - 1)].parse().unwrap()),
-            'h' => TimeType::H(s[0..(s.len() - 1)].parse().unwrap()),
-            'd' => TimeType::D(s[0..(s.len() - 1)].parse().unwrap()),
-            'w' => TimeType::W(s[0..(s.len() - 1)].parse().unwrap()),
+            's' => TimeType::S(number),
+            'm' => TimeType::M(number),
+            'h' => TimeType::H(number),
+            'd' => TimeType::D(number),
+            'w' => TimeType::W(number),
             _ => panic!("TODO remove this"),
         };
 
