@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::str::FromStr;
 use std::time;
+use tokio::sync::mpsc;
 use tokio::task;
 use tokio::time::delay_for;
 
@@ -75,25 +76,52 @@ impl Schedule {
         delay_for(duration).await;
 
         let response = reqwest::Client::new().execute(self.request).await;
-        println!("{:?}", response);
+        // println!("{:?}", response);
 
         Ok(())
     }
 }
 
 async fn send_requests(schedules: Schedules) -> Result<()> {
+    println!("start scheduling request");
+
     // TODO Add async task budget
-    // const MAX_REQUEST: usize = 10_000;
+    const MAX_REQUEST: usize = 100;
 
-    let mut tasks = vec![];
-    for schedule in schedules {
-        let task = task::spawn(async { schedule.schedule().await });
-        tasks.push(task);
-    }
+    let (mut tx, mut rx) = mpsc::channel(MAX_REQUEST);
 
-    for task in tasks {
-        task.await??;
-    }
+    let sender_task = task::spawn(async move {
+        for schedule in schedules {
+            let task = task::spawn(async { schedule.schedule().await });
+            tx.send(task).await.unwrap();
+        }
+    });
+
+    let receiver_task = task::spawn(async move {
+        let mut errors = vec![];
+        let mut count = 0;
+
+        while let Some(task) = rx.recv().await {
+            match task.await {
+                Err(_) => unreachable!(),
+                Ok(v) => match v {
+                    Err(e) => {
+                        println!("{}", e);
+                        errors.push(e);
+                    }
+                    Ok(_) => {
+                        count += 1;
+                    }
+                },
+            }
+        }
+
+        println!("counts: {}", count);
+        println!("errors: {}", errors.len());
+    });
+
+    sender_task.await?;
+    receiver_task.await?;
 
     Ok(())
 }
