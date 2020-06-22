@@ -36,7 +36,7 @@ async fn main() -> PlaybackResult<()> {
     .unwrap();
 
     let shift = matches.value_of("shift").unwrap_or("0s");
-    let shift_time = parse_time(shift);
+    let shift_time = parse_time(shift)?;
 
     // TODO 新しいstructを作る
     // struct Hoge {
@@ -148,15 +148,27 @@ struct JsonLog {
 use std::convert::TryFrom;
 
 impl TryFrom<JsonLog> for Log {
-    type Error = PlaybackError;
+    type Error = anyhow::Error;
 
     fn try_from(json_log: JsonLog) -> Result<Self, Self::Error> {
-        const FORMAT: &str = "%Y-%m-%d %H:%M:%S%.f UTC";
-        let dt = NaiveDateTime::parse_from_str(&json_log.accessed_at, FORMAT).unwrap();
+        const FORMAT: &str = "%Y-%m-%d %H:%M:%S%.f UTC"; // TODO timezoneがUTCじゃなくても使えるようにする
+        let dt = match NaiveDateTime::parse_from_str(&json_log.accessed_at, FORMAT) {
+            Err(e) => bail!("Date and time format is not correct: {}", e),
+            Ok(dt) => dt,
+        };
+
         let accessed_at = DateTime::<Utc>::from_utc(dt, Utc);
 
-        let url = reqwest::Url::parse(&json_log.url)?;
-        let http_method = Method::from_bytes(&json_log.http_method.as_bytes())?;
+        let url = match reqwest::Url::parse(&json_log.url) {
+            Err(e) => bail!("url format is not correct: {}", e),
+            Ok(url) => url,
+        };
+
+        let http_method = match Method::from_bytes(&json_log.http_method.as_bytes()) {
+            Err(e) => bail!("Method is not correct: {}", e),
+            Ok(url) => url,
+        };
+
         let http_header = json_log.http_header;
         let http_body = json_log.http_body;
 
@@ -206,11 +218,15 @@ enum TimeType {
 }
 
 impl std::str::FromStr for TimeType {
-    type Err = PlaybackError;
+    type Err = anyhow::Error;
 
     // TODO add error handle
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let tail = s.chars().last().unwrap();
+        let tail = match s.chars().last() {
+            None => bail!("invalid shift time"),
+            Some(tail) => tail,
+        };
+
         let number = s[0..(s.len() - 1)].parse()?;
 
         let time_type = match tail {
@@ -219,7 +235,7 @@ impl std::str::FromStr for TimeType {
             'h' => TimeType::H(number),
             'd' => TimeType::D(number),
             'w' => TimeType::W(number),
-            _ => panic!("TODO remove this"),
+            _ => bail!("invalid shift time"),
         };
 
         Ok(time_type)
@@ -251,14 +267,14 @@ fn test_time_type_from_str() {
     assert!(TimeType::from_str("2t").is_err());
 }
 
-fn parse_time(s: &str) -> time::Duration {
-    let time_type = TimeType::from_str(s).unwrap(); // TODO remove unwrap
+fn parse_time(s: &str) -> PlaybackResult<time::Duration> {
+    let time_type = TimeType::from_str(s)?;
 
-    match time_type {
+    Ok(match time_type {
         TimeType::S(t) => time::Duration::from_secs(t),
         TimeType::M(t) => time::Duration::from_secs(t * 60),
         TimeType::H(t) => time::Duration::from_secs(t * 60 * 60),
         TimeType::D(t) => time::Duration::from_secs(t * 60 * 60 * 24),
         TimeType::W(t) => time::Duration::from_secs(t * 60 * 60 * 24 * 7),
-    }
+    })
 }
