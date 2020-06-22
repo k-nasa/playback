@@ -1,5 +1,3 @@
-#![feature(async_closure)]
-
 use anyhow::{bail, Result};
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use clap::{App, AppSettings, Arg};
@@ -75,7 +73,7 @@ impl Schedule {
 
         delay_for(duration).await;
 
-        let response = reqwest::Client::new().execute(self.request).await;
+        let _response = reqwest::Client::new().execute(self.request).await;
         // println!("{:?}", response);
 
         Ok(())
