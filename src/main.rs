@@ -4,6 +4,7 @@ use reqwest::{Method, Url};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::str::FromStr;
 use std::time;
 use tokio::task;
 use tokio::time::delay_for;
@@ -150,8 +151,8 @@ impl TryFrom<JsonLog> for Log {
     type Error = PlaybackError;
 
     fn try_from(json_log: JsonLog) -> Result<Self, Self::Error> {
-        let format = "%Y-%m-%d %H:%M:%S%.f UTC";
-        let dt = NaiveDateTime::parse_from_str(&json_log.accessed_at, format).unwrap();
+        const FORMAT: &str = "%Y-%m-%d %H:%M:%S%.f UTC";
+        let dt = NaiveDateTime::parse_from_str(&json_log.accessed_at, FORMAT).unwrap();
         let accessed_at = DateTime::<Utc>::from_utc(dt, Utc);
 
         let url = reqwest::Url::parse(&json_log.url)?;
@@ -188,7 +189,12 @@ fn resolve_log_text(log_text: &str) -> PlaybackResult<Logs> {
     Ok(logs)
 }
 
-use std::str::FromStr;
+#[test]
+fn test_resolve_log_text() {
+    let sample_json = include_str!("../log_examples/sample.json");
+
+    assert!(resolve_log_text(sample_json).is_ok());
+}
 
 #[derive(Eq, PartialEq, Debug)]
 enum TimeType {
