@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use clap::{App, AppSettings, Arg};
 use reqwest::{Method, Url};
