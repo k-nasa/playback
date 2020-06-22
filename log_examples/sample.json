@@ -1,0 +1,9 @@
+[
+  {
+    "accessed_at": "2020-06-22 04:24:00.678451 UTC",
+    "url": "http://localhost:8080",
+    "http_method": "get",
+    "http_header": {},
+    "http_body": "hoge"
+  }
+]
